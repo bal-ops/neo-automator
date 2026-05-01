@@ -10,47 +10,40 @@ exports.handler = async (event, context) => {
   try {
     const data = JSON.parse(event.body);
     const ytUrl = data.ytUrl;
-    const manualText = data.manualText; // Jalur darurat: input manual
-    const contentType = data.contentType; // Tangkep pilihan dari dropdown web
+    const manualText = data.manualText; 
+    const contentType = data.contentType; 
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // STEP 1: Narik text — pake fallback logic
     let fullText = "";
+    let useGoogleSearchFallback = false;
 
+    // STEP 1: LOGIKA PENARIKAN MATERI
     if (ytUrl) {
       try {
-        // Coba narik transcript dari YouTube
+        // A. Coba cara halus: Tarik Transcript Asli
         const transcriptData = await YoutubeTranscript.fetchTranscript(ytUrl);
-        fullText = transcriptData.map(t => t.text).join(" ");
+        fullText = "Ini transcript videonya:\n\n" + transcriptData.map(t => t.text).join(" ");
       } catch (transcriptError) {
-        // Transcript gagal (CC disabled, dll) — fallback ke manualText
+        // B. Transcript Gagal (CC Mati)
         if (manualText && manualText.trim().length > 0) {
-          fullText = manualText.trim();
+          fullText = "Ini ringkasan materinya:\n\n" + manualText.trim();
         } else {
-          // Transcript gagal DAN manual kosong — game over
-          return {
-            statusCode: 400,
-            body: JSON.stringify({
-              error: "Waduh bos, CC YouTube-nya digembok nih. Coba paste ringkasan materinya di kotak Input Manual aja!"
-            }),
-          };
+          // C. THE SECRET BYPASS: Pakai Google Search Grounding!
+          useGoogleSearchFallback = true;
+          fullText = `TUGAS DARURAT: CC YouTube digembok. Lakukan Google Search untuk video YouTube ini: "${ytUrl}". Cari rangkuman konten valid dari hasil pencarian (bukan tebakan). Ekstrak poin visual/edukatif utamanya sebagai bahan materi.`;
         }
       }
     } else if (manualText && manualText.trim().length > 0) {
-      // Gak ada URL, tapi ada manual text — pake itu
-      fullText = manualText.trim();
+      fullText = "Ini ringkasan materinya:\n\n" + manualText.trim();
     } else {
-      // Dua-duanya kosong
       return {
         statusCode: 400,
-        body: JSON.stringify({
-          error: "Minimal isi salah satu dong bos: Link YouTube ATAU Input Manual!"
-        }),
+        body: JSON.stringify({ error: "Minimal isi salah satu dong bos: Link YouTube ATAU Input Manual!" }),
       };
     }
 
-    // STEP 2: Masukin System Instruction The Neo yang SUPER DETAIL
+    // STEP 2: SYSTEM INSTRUCTION NEO
     const systemPrompt = `Anda adalah 'New NEO', Digital Twin dari Iqbal (Bal), seorang AI Product Builder & System Thinker. Tugas utama Anda adalah mentransformasi perintah konten menjadi aset siap posting yang strategis, terdiri dari Prompt Gambar yang detail dan Copywriting yang mendalam.
 
 Misi Utama:
@@ -88,18 +81,24 @@ Aturan Wajib:
 - Isi teks dalam prompt gambar harus relevan dan informatif, bukan teks dummy.
 - Jangan malas: tulis deskripsi style secara lengkap setiap saat.`;
 
-    const modelNeo = genAI.getGenerativeModel({ 
+    const modelConfig = { 
       model: "gemini-1.5-flash",
       systemInstruction: systemPrompt
-    });
+    };
 
-    // STEP 3: Tembak prompt ke model
-    const promptEksekusi = `Ini transcript videonya:\n\n${fullText}\n\nTolong olah materi ini menggunakan format CASE: ${contentType}.`;
+    // AKTIFKAN GOOGLE SEARCH KALAU TRANSCRIPT GAGAL
+    if (useGoogleSearchFallback) {
+      modelConfig.tools = [{ googleSearch: {} }];
+    }
+
+    const modelNeo = genAI.getGenerativeModel(modelConfig);
+
+    // STEP 3: TEMBAK KE GEMINI
+    const promptEksekusi = `${fullText}\n\nTolong olah materi ini menggunakan format CASE: ${contentType}.`;
     
     const neoResult = await modelNeo.generateContent(promptEksekusi);
     const neoResponse = neoResult.response.text();
     
-    // Balikin ke Frontend
     return {
       statusCode: 200,
       body: JSON.stringify({ content: neoResponse }),
