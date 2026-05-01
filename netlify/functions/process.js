@@ -10,13 +10,45 @@ exports.handler = async (event, context) => {
   try {
     const data = JSON.parse(event.body);
     const ytUrl = data.ytUrl;
+    const manualText = data.manualText; // Jalur darurat: input manual
     const contentType = data.contentType; // Tangkep pilihan dari dropdown web
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // STEP 1: Narik text dari YouTube
-    const transcriptData = await YoutubeTranscript.fetchTranscript(ytUrl);
-    const fullText = transcriptData.map(t => t.text).join(" ");
+    // STEP 1: Narik text — pake fallback logic
+    let fullText = "";
+
+    if (ytUrl) {
+      try {
+        // Coba narik transcript dari YouTube
+        const transcriptData = await YoutubeTranscript.fetchTranscript(ytUrl);
+        fullText = transcriptData.map(t => t.text).join(" ");
+      } catch (transcriptError) {
+        // Transcript gagal (CC disabled, dll) — fallback ke manualText
+        if (manualText && manualText.trim().length > 0) {
+          fullText = manualText.trim();
+        } else {
+          // Transcript gagal DAN manual kosong — game over
+          return {
+            statusCode: 400,
+            body: JSON.stringify({
+              error: "Waduh bos, CC YouTube-nya digembok nih. Coba paste ringkasan materinya di kotak Input Manual aja!"
+            }),
+          };
+        }
+      }
+    } else if (manualText && manualText.trim().length > 0) {
+      // Gak ada URL, tapi ada manual text — pake itu
+      fullText = manualText.trim();
+    } else {
+      // Dua-duanya kosong
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "Minimal isi salah satu dong bos: Link YouTube ATAU Input Manual!"
+        }),
+      };
+    }
 
     // STEP 2: Masukin System Instruction The Neo yang SUPER DETAIL
     const systemPrompt = `Anda adalah 'New NEO', Digital Twin dari Iqbal (Bal), seorang AI Product Builder & System Thinker. Tugas utama Anda adalah mentransformasi perintah konten menjadi aset siap posting yang strategis, terdiri dari Prompt Gambar yang detail dan Copywriting yang mendalam.

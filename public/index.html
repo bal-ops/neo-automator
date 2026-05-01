@@ -34,7 +34,13 @@
             margin-top: 20px;
             font-size: 1.1rem;
         }
-        input, select {
+        .label-sub {
+            font-weight: 400;
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 2px;
+        }
+        input, select, textarea {
             width: 100%;
             padding: 12px;
             margin-top: 8px;
@@ -44,9 +50,13 @@
             font-family: 'Google Sans', sans-serif;
             background-color: #fff;
         }
-        input:focus, select:focus {
+        input:focus, select:focus, textarea:focus {
             outline: none;
             background-color: #e0f7fa; /* Electric Blue nyala sikit */
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
         }
         button {
             padding: 15px;
@@ -73,6 +83,29 @@
         /* Generate button spacing */
         #btn-generate {
             margin-top: 25px;
+        }
+
+        /* Divider OR */
+        .divider-or {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+            gap: 12px;
+        }
+        .divider-or::before,
+        .divider-or::after {
+            content: '';
+            flex: 1;
+            height: 3px;
+            background-color: #111;
+        }
+        .divider-or span {
+            font-weight: 900;
+            font-size: 0.9rem;
+            background-color: #ffe082;
+            border: 3px solid #111;
+            padding: 4px 14px;
+            box-shadow: 3px 3px 0px #111;
         }
 
         #result-box {
@@ -215,6 +248,12 @@
         <label>1. Link YouTube Target</label>
         <input type="text" id="yt-link" placeholder="https://youtube.com/watch?v=...">
 
+        <div class="divider-or"><span>ATAU</span></div>
+
+        <label>📝 Paste Materi Manual (Jalur Darurat)</label>
+        <p class="label-sub">Kalau CC YouTube mati atau mau input dari artikel/catatan sendiri</p>
+        <textarea id="manual-text" placeholder="Paste ringkasan materi, transkrip manual, atau catatan lu di sini..."></textarea>
+
         <label>2. Mau Dibikin Apa?</label>
         <select id="content-type">
             <option value="CAROUSEL">Carousel / Slide (Instagram/Threads)</option>
@@ -251,14 +290,15 @@
 
         // ========== MAIN GENERATE FUNCTION ==========
         async function bakarKonten() {
-            const ytLink = document.getElementById('yt-link').value;
+            const ytLink = document.getElementById('yt-link').value.trim();
+            const manualText = document.getElementById('manual-text').value.trim();
             const contentType = document.getElementById('content-type').value;
             const btn = document.getElementById('btn-generate');
             const resultBox = document.getElementById('result-box');
             const actionRow = document.getElementById('action-row');
 
-            if (!ytLink) {
-                alert("Masukin link YouTube-nya dulu bos!");
+            if (!ytLink && !manualText) {
+                alert("Minimal isi salah satu dong bos: Link YouTube ATAU Input Manual!");
                 return;
             }
 
@@ -267,20 +307,26 @@
             btn.disabled = true;
             resultBox.style.display = "block";
             actionRow.style.display = "none";
-            resultBox.innerText = "The Neo lagi narik transcript dan mikir struktur " + contentType + "...";
+
+            const source = ytLink ? "transcript YouTube" : "materi manual";
+            resultBox.innerText = "The Neo lagi proses " + source + " dan mikir struktur " + contentType + "...";
 
             try {
                 // Nembak ke backend Netlify lu
                 const response = await fetch('/.netlify/functions/process', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ytUrl: ytLink, contentType: contentType })
+                    body: JSON.stringify({
+                        ytUrl: ytLink,
+                        manualText: manualText,
+                        contentType: contentType
+                    })
                 });
 
                 const data = await response.json();
 
                 if (data.error) {
-                    resultBox.innerText = "Waduh error bos: " + data.error;
+                    resultBox.innerText = "⚠️ " + data.error;
                 } else {
                     resultBox.innerHTML = "<strong>HASIL THE NEO:</strong>\n\n" + data.content;
                     actionRow.style.display = "flex";
